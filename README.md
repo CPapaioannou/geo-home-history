@@ -1,5 +1,11 @@
 # Geo Home
 
+Based on [mmillmor/geo_home](https://github.com/mmillmor/geo_home), the original
+Geo Home integration by [mmillmor](https://github.com/mmillmor) and its
+contributors. This independently maintained fork adds timestamped electricity
+history for Home Assistant's Energy dashboard. The original project history is
+retained, and the code remains under the [Apache License 2.0](LICENSE).
+
 ## Timestamped energy history fork (beta)
 
 This fork adds **Geo electricity — timestamped history**, a separate external
