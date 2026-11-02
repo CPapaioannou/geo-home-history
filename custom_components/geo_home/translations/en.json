@@ -1,36 +1,42 @@
 {
-    "config": {
-      "step": {
-        "user": {
-          "title": "Setup Geo Home",
-          "description": "Enter the username and password for geoHome.",
-          "data": {
-            "username": "Username",
-            "password": "Password",
-            "system_name": "System Name (optional)"
-          }
+  "config": {
+    "step": {
+      "user": {
+        "title": "Setup Geo Home",
+        "description": "Enter your Geo Home account details. Leave the history date empty to collect new complete hours from setup onward, or choose a date to request older electricity readings.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "system_name": "System Name (optional)",
+          "history_start_date": "Import history from (optional UTC date)"
         }
-      },
-      "error": {
-        "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
-        "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-        "unknown": "[%key:common::config_flow::error::unknown%]"
-      },
-      "abort": {
-        "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
       }
     },
-    "options": {
-      "step": {
-        "init": {
-          "title": "Edit Geo Home settings",
-          "description": "Enter the username and password for your Geo Home.",
-          "data": {
-            "username": "Username",
-            "password": "Password",
-            "system_name": "System Name (optional)"
-          }
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Electricity history",
+        "description": "Choose a UTC start date to extend history. Leave empty to keep existing coverage. Existing readings are retained. Use the Import electricity history action for a one-off date range.",
+        "data": {
+          "history_start_date": "Import history from (optional UTC date)"
         }
+      },
+      "confirm": {
+        "title": "Confirm history settings",
+        "description": "Requested start: {start_date}. Saving starts the import in batches. It does not change the Energy dashboard source or delete existing sensor history."
       }
+    },
+    "error": {
+      "future_date": "Choose today or an earlier date."
     }
   }
+}

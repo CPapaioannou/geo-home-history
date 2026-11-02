@@ -1,0 +1,25 @@
+import_history:
+  name: Import electricity history
+  description: Preview or import a chosen UTC date range (up to 31 dates). Turn off Preview only to save the import. Existing sensors are retained.
+  fields:
+    entry_id:
+      name: Geo Home integration
+      required: true
+      selector:
+        config_entry:
+          integration: geo_home
+    start_date:
+      name: Start date (UTC)
+      required: true
+      selector:
+        date:
+    end_date:
+      name: End date (UTC, inclusive)
+      required: true
+      selector:
+        date:
+    dry_run:
+      name: Preview only
+      default: true
+      selector:
+        boolean:

@@ -22,7 +22,9 @@ and assigns quarter-hour import energy to its original UTC hour.
 
 ### Import behaviour
 
-- Initial import covers today and the previous two UTC dates.
+- New installations collect complete hours from setup onward by default. An
+  optional UTC history start date during setup explicitly requests older readings.
+  Existing installations retain their saved coverage.
 - Refreshes every 15 minutes; only completed hours with all four quarter-hours
   are imported. The newest hour may appear later if Geo has not published it yet.
 - Rechecks the last three UTC dates for late or corrected readings. Missing
@@ -32,9 +34,10 @@ and assigns quarter-hour import energy to its original UTC hour.
   seven dates per refresh. It does not estimate consumption during missing data.
 - Duplicate intervals are deduplicated. Conflicting duplicates and unsupported
   interval formats reject the refresh. Corrections recompute subsequent sums.
-- A zero baseline is inserted one hour before the initial import window so the
-  first imported hour has a correct delta. It is an accounting baseline, not a
-  meter reading. Cumulative totals start at that window, not at meter installation.
+- Only measured complete hours are written. Cumulative totals start with the
+  first real hour; no artificial preceding-hour baseline is added. On upgrade
+  from beta.1, the separate timestamped series is rebuilt once from its saved
+  ledger to remove old placeholder rows. Existing sensor history is untouched.
 - Import failures retain existing statistics and retry. They do not fail the live
   coordinator refresh. History requests reuse the existing token and are serialized
   with live requests; no second login/account is created.
@@ -46,13 +49,31 @@ It is a recorder statistic, **not a sensor entity**; select it in Energy setting
 Each meter has a separate stable ID. Never add both the old counter and the new
 statistic as simultaneous grid consumption sources: that would double-count.
 
+### Choosing history and one-off backfills
+
+In **Settings → Devices & services → Geo Home → Configure**, choose a UTC start
+date and confirm to extend history in seven-date batches. Leaving the date empty
+keeps the existing coverage; it does not delete readings or reset the account.
+
+For a specific date range, use **Tools → Actions → Geo Home: Import electricity
+history** (`geo_home.import_history`). Select the integration and an inclusive UTC
+start/end date (up to 31 dates per call). **Preview only** defaults to on: the action
+returns the available complete hours and kWh without saving. Turn it off explicitly
+to import the range. Longer ranges can be split across calls, or use Configure.
+
+Backfills merge into the saved ledger and recompute cumulative sums, so ordinary
+refreshes and restarts retain them. Repeating a range replaces the same readings;
+it does not add consumption twice. Only complete readings returned by Geo are
+imported. Historical gaps stay missing, and source availability depends on Geo.
+No date choice changes the Energy dashboard source automatically.
+
 ### Installation and validation
 
 1. Keep a copy of the currently installed `custom_components/geo_home` directory.
 2. In HACS, open **Custom repositories**, add
    `https://github.com/CPapaioannou/geo-home-history` with type **Integration**,
    and download **Geo Home — Timestamped Energy History**. For this beta,
-   enable pre-release versions and select `v1.17.0-beta.1`.
+   enable pre-release versions and select the latest beta release.
    When migrating from the original Geo Home repository, remove its HACS
    download tracking so it cannot overwrite this version, then download this
    repository before restarting. The integration domain remains `geo_home`.

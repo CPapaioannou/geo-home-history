@@ -5,13 +5,15 @@
     "@mmillmor"
   ],
   "config_flow": true,
-  "dependencies": ["recorder"],
+  "dependencies": [
+    "recorder"
+  ],
   "documentation": "https://github.com/CPapaioannou/geo-home-history",
   "homekit": {},
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/CPapaioannou/geo-home-history/issues",
   "requirements": [],
   "ssdp": [],
-  "version": "1.17.0-beta.1",
+  "version": "1.17.0-beta.2",
   "zeroconf": []
 }

@@ -61,8 +61,9 @@ def complete_hours(payload: object, now: datetime) -> dict[str, int]:
 def cumulative_rows(hours: dict[str, int], origin: datetime) -> list[dict]:
     """Recompute all sums so corrections propagate to every subsequent hour."""
     origin_ts = int(origin.timestamp())
-    rows = [{"start": datetime.fromtimestamp(origin_ts - 3600, UTC),
-             "state": 0.0, "sum": 0.0}]
+    # Recorder computes the first delta from zero when no preceding sum exists.
+    # A synthetic preceding hour would incorrectly present missing usage as zero.
+    rows = []
     total = 0
     for key, wh in sorted(hours.items(), key=lambda item: int(item[0])):
         start = int(key)

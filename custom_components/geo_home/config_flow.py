@@ -11,6 +11,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
+from datetime import date
 
 from .const import DOMAIN
 from .geohome import GeoHomeHub
@@ -80,6 +83,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return HistoryOptionsFlow()
+
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -88,6 +97,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
 
             try:
+                if user_input.get("history_start_date") and date.fromisoformat(user_input["history_start_date"]) > dt_util.utcnow().date():
+                    raise ValueError("History start date is in the future")
                 info = await validate_input(self.hass, user_input)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
@@ -102,7 +113,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
-            step_id="user", data_schema=vol.Schema(options_schema()), errors=errors
+            step_id="user", data_schema=vol.Schema({**options_schema(),
+                vol.Optional("history_start_date"): selector.DateSelector()}), errors=errors
         )
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None):
@@ -140,3 +152,34 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
+
+
+class HistoryOptionsFlow(config_entries.OptionsFlow):
+    """Choose an explicit starting date without changing account credentials."""
+
+    async def async_step_init(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            selected = user_input.get("history_start_date")
+            if selected and date.fromisoformat(selected) > dt_util.utcnow().date():
+                errors["base"] = "future_date"
+            else:
+                self._selected_history = selected
+                return await self.async_step_confirm()
+        field = vol.Optional("history_start_date")
+        return self.async_show_form(
+            step_id="init", data_schema=vol.Schema({field: selector.DateSelector()}), errors=errors
+        )
+
+    async def async_step_confirm(self, user_input=None):
+        if user_input is not None:
+            options = {**self.config_entry.options}
+            if self._selected_history:
+                options["history_start_date"] = self._selected_history
+            else:
+                options.pop("history_start_date", None)
+            return self.async_create_entry(title="", data=options)
+        return self.async_show_form(
+            step_id="confirm", data_schema=vol.Schema({}),
+            description_placeholders={"start_date": self._selected_history or "No additional past history"},
+        )

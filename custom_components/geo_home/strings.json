@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "Setup GeoHome",
-        "description": "Enter the username and password for geoHome.",
+        "description": "Enter your Geo Home account details. Leave the history date empty to collect new complete hours from setup onward, or choose a date to request older electricity readings.",
         "data": {
           "username": "Username",
-          "password": "Password"
+          "password": "Password",
+          "history_start_date": "Import history from (optional UTC date)"
         }
       }
     },
@@ -22,13 +23,19 @@
   "options": {
     "step": {
       "init": {
-        "title": "Edit geo Home settings",
-        "description": "Enter the username and password for your geo Home.",
+        "title": "Electricity history",
+        "description": "Choose a UTC start date to extend history. Leave empty to keep existing coverage. Existing readings are retained. Use the Import electricity history action for a one-off date range.",
         "data": {
-          "username": "Username",
-          "password": "Password"
+          "history_start_date": "Import history from (optional UTC date)"
         }
+      },
+      "confirm": {
+        "title": "Confirm history settings",
+        "description": "Requested start: {start_date}. Saving starts the import in batches. It does not change the Energy dashboard source or delete existing sensor history."
       }
+    },
+    "error": {
+      "future_date": "Choose today or an earlier date."
     }
   }
 }

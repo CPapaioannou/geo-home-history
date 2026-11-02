@@ -38,8 +38,8 @@ class ValidationTests(unittest.TestCase):
     def test_complete_hour_and_units(self):
         hours = data.complete_hours(payload(), START + timedelta(hours=1))
         rows = data.cumulative_rows(hours, START)
-        self.assertEqual([r["sum"] for r in rows], [0, 0.4])
-        self.assertEqual(rows[1]["start"], START)
+        self.assertEqual([r["sum"] for r in rows], [0.4])
+        self.assertEqual(rows[0]["start"], START)
 
     def test_incomplete_hour_not_imported(self):
         self.assertEqual(data.complete_hours(payload()[:3], START + timedelta(hours=1)), {})
@@ -123,7 +123,11 @@ def fake_module(name, **attrs):
 # Boundary stubs test scheduling/storage/import contracts, not HA itself.
 fake_module("homeassistant")
 fake_module("homeassistant.components")
-fake_module("homeassistant.components.recorder")
+RECORDER = types.SimpleNamespace(
+    async_clear_statistics=Mock(side_effect=lambda ids, on_done: on_done()),
+    async_block_till_done=AsyncMock(),
+)
+fake_module("homeassistant.components.recorder", get_instance=lambda hass: RECORDER)
 fake_module("homeassistant.components.recorder.models", StatisticMeanType=types.SimpleNamespace(NONE=0))
 IMPORT = Mock()
 fake_module("homeassistant.components.recorder.statistics", async_add_external_statistics=IMPORT)
@@ -142,19 +146,21 @@ hub_module = load("geohome")
 
 
 class ImporterTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
+    async def asyncSetUp(self):
         FakeStore.saved = None
         FakeStore.fail_save = False
         IMPORT.reset_mock()
+        RECORDER.async_clear_statistics.reset_mock()
         self.hub = types.SimpleNamespace(deviceId="test-meter", async_get_history=AsyncMock(return_value=payload()))
-        self.importer = history.GeoHistoryImporter(object(), self.hub, "entry")
+        self.hass = types.SimpleNamespace(loop=asyncio.get_running_loop())
+        self.importer = history.GeoHistoryImporter(self.hass, self.hub, "entry", "2026-10-31")
 
     async def test_repeat_and_restart_are_idempotent(self):
         await self.importer.async_refresh()
         expected = copy.deepcopy(IMPORT.call_args.args[2])
         await self.importer.async_refresh()
         self.assertEqual(IMPORT.call_args.args[2], expected)
-        restarted = history.GeoHistoryImporter(object(), self.hub, "entry")
+        restarted = history.GeoHistoryImporter(self.hass, self.hub, "entry")
         await restarted.async_refresh()
         self.assertEqual(IMPORT.call_args.args[2], expected)
         self.assertEqual(IMPORT.call_args.args[1]["statistic_id"], "geo_home:test_meter_electricity_import")
@@ -205,6 +211,82 @@ class ImporterTests(unittest.IsolatedAsyncioTestCase):
         self.importer.running = True
         await self.importer.async_refresh()
         self.hub.async_get_history.assert_not_awaited()
+
+    async def test_default_does_not_import_past_hours(self):
+        self.importer = history.GeoHistoryImporter(self.hass, self.hub, "fresh")
+        self.hub.async_get_history.return_value = payload(start=NOW.replace(hour=9, minute=0))
+        await self.importer.async_refresh()
+        self.assertEqual(self.importer.data["hours"], {})
+        IMPORT.assert_not_called()
+        self.assertEqual(self.importer.data["start_hour"], int(NOW.replace(minute=0).timestamp()))
+
+    async def test_same_day_option_expands_start_to_midnight(self):
+        FakeStore.saved = {"system_id": "test-meter", "origin": "2026-11-02",
+                           "start_hour": int(NOW.replace(minute=0).timestamp()),
+                           "next_date": "2026-11-02", "hours": {}, "format_version": 2}
+        self.importer = history.GeoHistoryImporter(self.hass, self.hub, "entry", "2026-11-02")
+        await self.importer._async_load()
+        self.assertEqual(self.importer.data["start_hour"], int(NOW.replace(hour=0, minute=0).timestamp()))
+
+    async def test_preview_does_not_write_or_extend_coverage(self):
+        await self.importer.async_refresh()
+        before = copy.deepcopy(FakeStore.saved)
+        IMPORT.reset_mock()
+        self.hub.async_get_history.return_value = payload(start=START-timedelta(days=1))
+        result = await self.importer.async_backfill(date(2026,10,30), date(2026,10,30))
+        self.assertEqual(result["complete_hours"], 1)
+        self.assertEqual(FakeStore.saved, before)
+        IMPORT.assert_not_called()
+
+    async def test_backfill_survives_normal_refresh_and_restart(self):
+        await self.importer.async_refresh()
+        earlier = START-timedelta(days=2)
+        self.hub.async_get_history.return_value = payload(200, start=earlier)
+        await self.importer.async_backfill(earlier.date(), earlier.date(), dry_run=False)
+        self.assertEqual(self.importer.data["origin"], earlier.date().isoformat())
+        self.assertEqual(IMPORT.call_args.args[2][0]["start"], earlier)
+        self.assertEqual(IMPORT.call_args.args[2][-1]["sum"], 1.2)
+        self.hub.async_get_history.return_value = payload()
+        await self.importer.async_refresh()
+        restarted = history.GeoHistoryImporter(self.hass, self.hub, "entry")
+        await restarted.async_refresh()
+        self.assertEqual(IMPORT.call_args.args[2][-1]["sum"], 1.2)
+        self.assertEqual(IMPORT.call_args.args[2][0]["start"], earlier)
+
+    async def test_legacy_cache_is_rebuilt_once(self):
+        FakeStore.saved = {"system_id":"test-meter", "origin":"2026-10-31",
+                           "next_date":"2026-10-31", "hours":{}}
+        await self.importer.async_refresh()
+        RECORDER.async_clear_statistics.assert_called_once_with(
+            ["geo_home:test_meter_electricity_import"], on_done=unittest.mock.ANY)
+        self.assertFalse(FakeStore.saved["rebuild_pending"])
+        await self.importer.async_refresh()
+        self.assertEqual(RECORDER.async_clear_statistics.call_count, 1)
+
+    async def test_invalid_ranges_do_not_fetch_or_write(self):
+        for start, end in [(date(2026,11,2),date(2026,11,1)),
+                           (date(2026,11,2),date(2026,11,3)),
+                           (date(2026,9,1),date(2026,10,31))]:
+            with self.assertRaises(ValueError):
+                await self.importer.async_backfill(start,end,dry_run=False)
+        self.hub.async_get_history.assert_not_awaited()
+        IMPORT.assert_not_called()
+
+    async def test_backfill_network_failure_preserves_ledger(self):
+        await self.importer.async_refresh()
+        before=copy.deepcopy(FakeStore.saved)
+        self.hub.async_get_history.side_effect=TimeoutError()
+        with self.assertRaises(TimeoutError):
+            await self.importer.async_backfill(date(2026,10,29),date(2026,10,30),dry_run=False)
+        self.assertEqual(FakeStore.saved,before)
+        self.assertFalse(self.importer.running)
+
+    async def test_empty_backfill_does_not_extend_coverage(self):
+        await self.importer.async_refresh()
+        before=copy.deepcopy(FakeStore.saved)
+        self.hub.async_get_history.return_value=[]
+        await self.importer.async_backfill(date(2026,10,29),date(2026,10,30),dry_run=False)
+        self.assertEqual(FakeStore.saved,before)
 
 
 class HttpTests(unittest.TestCase):

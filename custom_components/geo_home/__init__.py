@@ -13,6 +13,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from .const import DOMAIN
 from .geohome import GeoHomeHub
 from .history import GeoHistoryImporter
+from .services import async_register_history_service
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,8 +59,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    history = GeoHistoryImporter(hass, hub, entry.entry_id)
+    history = GeoHistoryImporter(
+        hass, hub, entry.entry_id,
+        entry.options.get("history_start_date", entry.data.get("history_start_date")),
+    )
     coordinator.history = history
+    async_register_history_service(hass)
 
     @callback
     def refresh_history(_now=None):
