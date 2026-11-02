@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+import asyncio
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -29,6 +30,7 @@ class GeoHomeHub:
         self.password = password
         self.system_name = system_name
         self.hass = hass
+        self._request_lock = asyncio.Lock()
         self.accessToken = None
         self.electricityCreditRemaining = None
         self.gasCreditRemaining = None
@@ -307,6 +309,25 @@ class GeoHomeHub:
         return False
 
     async def get_device_data(self):
+        async with self._request_lock:
+            return await self.hass.async_add_executor_job(self.async_get_device_data)
 
-        response = await self.hass.async_add_executor_job(self.async_get_device_data)
-        return response
+    def _get_history(self, start, end):
+        """Reuse the live connection's token; never start a competing login."""
+        if not self.deviceId or not self.accessToken:
+            raise RuntimeError("Live Geo connection is not authenticated")
+        response = requests.get(
+            BASE_URL + f"epochservice/v1/system/{self.deviceId}/readings",
+            headers={"Authorization": "Bearer " + self.accessToken},
+            params={"startDate": start.isoformat(), "endDate": end.isoformat()},
+            timeout=20,
+        )
+        if response.status_code == 401:
+            # Let the normal live refresh renew the shared session.
+            self.accessToken = None
+        response.raise_for_status()
+        return response.json()
+
+    async def async_get_history(self, start, end):
+        async with self._request_lock:
+            return await self.hass.async_add_executor_job(self._get_history, start, end)

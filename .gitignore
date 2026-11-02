@@ -1,1 +1,4 @@
-custom_components/geo_home/__pycache__
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/

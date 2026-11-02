@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-import async_timeout
+import asyncio
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN
 from .geohome import GeoHomeHub
+from .history import GeoHistoryImporter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class GeoHomeCoordinator(DataUpdateCoordinator):
         self.hub = hub
 
     async def _async_update_data(self):
-        async with async_timeout.timeout(30):
+        async with asyncio.timeout(30):
             res = await self.hub.get_device_data()
             if not res:
                 raise UpdateFailed("Failed to fetch data from GeoHome API")
@@ -55,6 +57,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    history = GeoHistoryImporter(hass, hub, entry.entry_id)
+    coordinator.history = history
+
+    @callback
+    def refresh_history(_now=None):
+        entry.async_create_background_task(
+            hass, history.async_refresh(), "Geo timestamped history import"
+        )
+
+    entry.async_on_unload(
+        async_track_time_interval(hass, refresh_history, timedelta(minutes=15))
+    )
+    refresh_history()
 
     return True
 

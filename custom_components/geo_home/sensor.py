@@ -1,7 +1,6 @@
 from __future__ import annotations
 from .geohome import GeoHomeHub
 import logging
-import async_timeout
 from datetime import datetime, time, date, timedelta
 
 from homeassistant.components.sensor import (

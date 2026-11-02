@@ -1,5 +1,6 @@
 {
-    "name": "Geo Home Smart Meter Integration",
+    "name": "Geo Home — Timestamped Energy History",
+    "homeassistant": "2026.4.0",
     "content_in_root": false,
     "render_readme": true
   }
